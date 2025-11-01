@@ -1,7 +1,6 @@
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
-import sql from 'mssql';
-import { poolPromise } from '../config/db.js';
+import pool from '../config/db.js';
 
 // Generar secreto y QR code para TOTP
 export const setupTOTP = async (req, res) => {
@@ -18,17 +17,14 @@ export const setupTOTP = async (req, res) => {
     const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
 
     // Guardar secreto temporalmente en BD (sin activar aún)
-    const pool = await poolPromise;
-    await pool.request()
-      .input('correo', sql.VarChar, correo)
-      .input('secreto', sql.VarChar, secret.base32)
-      .query(`
-        UPDATE Usuarios 
-        SET secreto_2fa = @secreto, 
-            metodo_2fa = 'TOTP',
-            esta_2fa_habilitado = 0
-        WHERE correo = @correo
-      `);
+    await pool.query(
+      `UPDATE Usuarios 
+       SET secreto_2fa = ?, 
+           metodo_2fa = 'TOTP',
+           esta_2fa_habilitado = 0
+       WHERE correo = ?`,
+      [secret.base32, correo]
+    );
 
     res.json({
       message: 'TOTP generado correctamente',
@@ -47,16 +43,16 @@ export const verifyTOTP = async (req, res) => {
   try {
     const { correo, token } = req.body;
 
-    const pool = await poolPromise;
-    const result = await pool.request()
-      .input('correo', sql.VarChar, correo)
-      .query('SELECT secreto_2fa FROM Usuarios WHERE correo = @correo');
+    const [rows] = await pool.query(
+      'SELECT secreto_2fa FROM Usuarios WHERE correo = ?',
+      [correo]
+    );
 
-    if (result.recordset.length === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
-    const secret = result.recordset[0].secreto_2fa;
+    const secret = rows[0].secreto_2fa;
 
     // Verificar el token TOTP
     const verified = speakeasy.totp.verify({
@@ -68,13 +64,12 @@ export const verifyTOTP = async (req, res) => {
 
     if (verified) {
       // Activar 2FA
-      await pool.request()
-        .input('correo', sql.VarChar, correo)
-        .query(`
-          UPDATE Usuarios 
-          SET esta_2fa_habilitado = 1 
-          WHERE correo = @correo
-        `);
+      await pool.query(
+        `UPDATE Usuarios 
+         SET esta_2fa_habilitado = 1 
+         WHERE correo = ?`,
+        [correo]
+      );
 
       res.json({ message: 'TOTP verificado y activado correctamente ✅' });
     } else {
@@ -92,16 +87,16 @@ export const validateTOTP = async (req, res) => {
   try {
     const { correo, token } = req.body;
 
-    const pool = await poolPromise;
-    const result = await pool.request()
-      .input('correo', sql.VarChar, correo)
-      .query('SELECT secreto_2fa FROM Usuarios WHERE correo = @correo');
+    const [rows] = await pool.query(
+      'SELECT secreto_2fa FROM Usuarios WHERE correo = ?',
+      [correo]
+    );
 
-    if (result.recordset.length === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
-    const secret = result.recordset[0].secreto_2fa;
+    const secret = rows[0].secreto_2fa;
 
     const verified = speakeasy.totp.verify({
       secret: secret,

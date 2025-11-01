@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import twoFactorRoutes from './routes/twoFactorRoutes.js';
+import emailRoutes from './routes/emailRoutes.js';
 
 dotenv.config();
 
@@ -12,6 +13,7 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/2fa", twoFactorRoutes);
+app.use("/api/email", emailRoutes )
 
 app.listen(process.env.PORT || 4000, () => {
   console.log(`✅ Servidor corriendo en http://localhost:${process.env.PORT || 4000}`);
